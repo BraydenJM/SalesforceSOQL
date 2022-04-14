@@ -5,7 +5,7 @@ using Newtonsoft.Json.Linq;
 
 namespace SalesforceSOQL
 {
-    public class SalesforceSOQL
+    public class SalesforceSOQLHandler
     {
         private string loginEndpoint { get; set; }
         private string apiEndpoint { get; set; }
@@ -32,7 +32,7 @@ namespace SalesforceSOQL
         /// <param name="consumerKey">salesforce API consumer key</param>
         /// <param name="consumerSecret">API secret</param>
         /// <exception cref="Exception">thrown when one or more constructor values is null</exception>
-        public SalesforceSOQL(string loginEndpoint, String apiEndpoint, String serviceUrl, String oAuthEndpoint,
+        public SalesforceSOQLHandler(string loginEndpoint, String apiEndpoint, String serviceUrl, String oAuthEndpoint,
             String username, String password, String consumerKey, String consumerSecret)
         {
             if (loginEndpoint != null & apiEndpoint != null & serviceUrl != null & oAuthEndpoint != null & username != null
@@ -68,7 +68,7 @@ namespace SalesforceSOQL
         /// <param name="consumerKey">salesforce API consumer key</param>
         /// <param name="consumerSecret">API secret</param>
         /// <exception cref="Exception">thrown when one or more constructor values is null</exception>
-        public SalesforceSOQL(string loginEndpoint, string apiEndpoint, string serviceUrl, string oAuthEndpoint,
+        public SalesforceSOQLHandler(string loginEndpoint, string apiEndpoint, string serviceUrl, string oAuthEndpoint,
             string username, string password, string token, string consumerKey, string consumerSecret)
         {
             if (loginEndpoint != null & apiEndpoint != null & serviceUrl != null & oAuthEndpoint != null & username != null
@@ -158,6 +158,7 @@ namespace SalesforceSOQL
             request.Headers.Add("Authorization", "Bearer " + authToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             HttpResponseMessage response = client.SendAsync(request).Result;
+            
             return HTTPResponseToString(response);
 
         }
