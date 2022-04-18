@@ -46,7 +46,7 @@ namespace SalesforceSOQL
                 this.password = password;
                 this.consumerKey = consumerKey;
                 this.consumerSecret = consumerSecret;
-                this.client = client;
+                this.client = new HttpClient();
                 getAuthToken();
             }
             else
@@ -83,7 +83,7 @@ namespace SalesforceSOQL
                 this.token = token;
                 this.consumerKey = consumerKey;
                 this.consumerSecret = consumerSecret;
-                this.client = client;
+                this.client = new HttpClient();
                 getAuthToken();
             }
             else
@@ -101,13 +101,14 @@ namespace SalesforceSOQL
         private void getAuthToken()
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
             HttpContent content = new FormUrlEncodedContent(new Dictionary<string, string>
                                 {
                                 {"grant_type", "password"},
                                 {"client_id", this.consumerKey},
                                 {"client_secret", this.consumerSecret},
                                 {"username", this.username},
-                                {"password", this.password}
+                                {"password", this.password + this.token}
                                 });
 
             HttpResponseMessage message = client.PostAsync(loginEndpoint, content).Result;
@@ -137,29 +138,49 @@ namespace SalesforceSOQL
         /// <returns>Returns the server response as a string. String is generated from a parsed JSON response sent by the server</returns>
         public string queryRecordString(string queryMessage)
         {
-            string RESTQuery = $"{serviceUrl}{apiEndpoint}query?q={queryMessage}";
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, RESTQuery);
-            request.Headers.Add("Authorization", "Bearer " + authToken);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            HttpResponseMessage response = client.SendAsync(request).Result;
-            return HTTPResponseToString(response);
 
-        }
-        /// <summary>
-        /// sends SOQL request to the salesforce database using the URL and enpoint values provided by the object parameters. Method is used
-        /// to handle queries when 2000+ results are expected
-        /// </summary>
-        /// <param name="queryMessage">query message to send in http request</param>
-        /// <returns>Returns the server response as a string. String is generated from a parsed JSON response sent by the server</returns>
-        public string queryBulkRecordString(string queryMessage)
-        {
             string RESTQuery = $"{serviceUrl}{apiEndpoint}query?q={queryMessage}";
             HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, RESTQuery);
             request.Headers.Add("Authorization", "Bearer " + authToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             HttpResponseMessage response = client.SendAsync(request).Result;
+            string result = HTTPResponseToString(response);
+            JObject obj = JObject.Parse(result);
+            string check = (string)obj["nextRecordsUrl"];
+            if(check != null)
+            {
+                while(check != null)
+                {
+                    result = result.Remove(result.Length - 8, 8);
+                    result += ",\n";
+                    request = new HttpRequestMessage(HttpMethod.Get, serviceUrl + check);
+                    request.Headers.Add("Authorization", "Bearer " + authToken);
+                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    response = client.SendAsync(request).Result;
+                    string temp = HTTPResponseToString(response);
+                    obj = JObject.Parse(temp);
+                    check = (string)obj["nextRecordsUrl"];
+
+                    foreach(JToken item in obj["records"])
+                    {
+                        if(item.ToString() == null)
+                        {
+                            
+                            break;
+                        }
+                        result += item.ToString() + ",\n";
+                    }
+                    result = result.Remove(result.Length - 2, 2);
+                    result += "\n   ]    \n}";  
+                }
+                return result;
+            }
+            else
+            {
+                return result;
+            }
             
-            return HTTPResponseToString(response);
+
 
         }
         /// <summary>
@@ -169,12 +190,8 @@ namespace SalesforceSOQL
         /// <returns>Returns the server response as a JObject. JObject is parsed from the response sent by the server</returns>
         public JObject queryRecordJObject(string queryMessage)
         {
-            string RESTQuery = $"{serviceUrl}{apiEndpoint}query?q={queryMessage}";
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, RESTQuery);
-            request.Headers.Add("Authorization", "Bearer " + authToken);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            HttpResponseMessage response = client.SendAsync(request).Result;
-            JObject result = JObject.Parse(response.Content.ReadAsStringAsync().Result);
+            string response = queryRecordString(queryMessage);
+            JObject result = JObject.Parse(response);
             return result;
 
         }
