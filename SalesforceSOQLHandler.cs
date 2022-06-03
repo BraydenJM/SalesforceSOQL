@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using Newtonsoft.Json.Linq;
+using Azure.Security.KeyVault.Secrets;
 
 namespace SalesforceSOQL
 {
@@ -91,6 +92,43 @@ namespace SalesforceSOQL
                 throw new Exception("Error in constructing SOQL Query object. One or more constructor fields provided is Null");
             }
 
+        }
+        /// <summary>
+        /// Constructor for the SOQLQuery class
+        /// </summary>
+        /// <param name="azVault">Azure secret key vault containing parameters</param>
+        /// <param name="loginEndpoint">login end point, ex: "https://login.salesforce.com/services/oauth2/token"</param>
+        /// <param name="apiEndpoint">api endpoint, ex: "/services/data/vXX.X/"</param>
+        /// <param name="serviceUrl">service URL ex: "https://sample.my.salesforce.com/"</param>
+        /// <param name="oAuthEndpoint">OAUTH endpoint URL, ex: "https://sample.my.salesforce.com/services/oauth2/token"</param>
+        /// <param name="username">salesforce login username</param>
+        /// <param name="password">salesforce login user password, must also contain password token</param>
+        /// <param name="token">secret token used for logging into API services. Typically sent once in the users email</param>
+        /// <param name="consumerKey">salesforce API consumer key</param>
+        /// <param name="consumerSecret">API secret</param>
+        public SalesforceSOQLHandler(SecretClient azVault, string loginEndpoint, string apiEndpoint, string serviceUrl, string oAuthEndpoint,
+                                    string username, string password, string token, string consumerKey, string consumerSecret)
+        {
+            KeyVaultSecret sec = azVault.GetSecret(loginEndpoint);
+            this.loginEndpoint = sec.Value;
+            sec = azVault.GetSecret(apiEndpoint);
+            this.apiEndpoint = sec.Value;
+            sec = azVault.GetSecret(serviceUrl);
+            this.serviceUrl = sec.Value;
+            sec = azVault.GetSecret(oAuthEndpoint);
+            this.oAuthEndpoint = sec.Value;
+            sec = azVault.GetSecret(username);
+            this.username = sec.Value;
+            sec = azVault.GetSecret(password);
+            this.password = sec.Value;
+            sec = azVault.GetSecret(token);
+            this.token = sec.Value;
+            sec = azVault.GetSecret(consumerKey);
+            this.consumerKey = sec.Value;
+            sec = azVault.GetSecret(consumerSecret);
+            this.consumerSecret = sec.Value;
+            this.client = new HttpClient();
+            getAuthToken();
         }
         /// <summary>
         /// Automatically called when the class is created. Method gets the authToken for the session and sets it as the
@@ -243,7 +281,7 @@ namespace SalesforceSOQL
             return response.Content.ReadAsStringAsync().Result;
         }
         /// <summary>
-        /// constructs full updateMessage to patch new field values to salesforce's REST API.
+        /// constructs full updateMessage to patch new field value to salesforce's REST API.
         /// </summary>
         /// <param name="Id">Id field of object to patch</param>
         /// <param name="recordType">Object type to patch</param>
@@ -253,11 +291,39 @@ namespace SalesforceSOQL
         public string PATCHValue(string recordType, string Id, string field, string fieldValue)
         {
             string updateMessage = $"<root>" +
-                $"<{field}>{fieldValue}</{field}" +
+                $"<{field}>{fieldValue}</{field}>" +
                 $"</root>";
 
             string result = PATCHRecord(updateMessage, recordType, Id);
             return result;
+        }
+        /// <summary>
+        /// constructs full updateMessage to patch new list of field values to salesforce's REST API.
+        /// </summary>
+        /// <param name="Id">Id field of object to patch</param>
+        /// <param name="recordType">Object type to patch</param>
+        /// <param name="field">field name to patch new value to</param>
+        /// <param name="fieldValue">field value to patch to given field</param>
+        /// <exception cref="Exception">throws exeption when field and fieldValue lists are not of equal size
+        /// <returns>returns response message from the REST API</returns>
+        public string PATCHValues(string recordType, string Id, List<string> field, List<string> fieldValue)
+        {
+            if(field.Count == fieldValue.Count)
+            {
+                string updateMessage = "<root>";
+                for(int i = 0; i < fieldValue.Count; i++)
+                {
+                    updateMessage += $"<{field}>{fieldValue}</{field}>";
+                }
+                updateMessage += "</root>";
+
+                string result = PATCHRecord(updateMessage, recordType, Id);
+                return result;
+            }
+            else
+            {
+                throw new Exception("ERROR: field and field value lists must be of equal size");
+            }
         }
         #endregion
         #region POST methods
@@ -267,10 +333,10 @@ namespace SalesforceSOQL
         /// <param name="createMessage">message to append to http request header</param>
         /// <param name="recordType">record type to post</param>
         /// <returns>retursn response message from REST API</returns>
-        private string POSTRecord(string createMessage, string recordType, string recordId)
+        private string POSTRecord(string createMessage, string recordType)
         {
             HttpContent contentCreate = new StringContent(createMessage, Encoding.UTF8, "application/xml");
-            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}/{recordId}?_HttpMethod=POST";
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}";
             HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Post, uri);
             requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
             requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/xml"));
@@ -288,13 +354,62 @@ namespace SalesforceSOQL
         /// <param name="field">field name to post new value to</param>
         /// <param name="fieldValue">field value to post to given field</param>
         /// <returns>returns response message from the REST API</returns>
-        public string POSTValue(string recordType, string Id, string field, string fieldValue)
+        public string POSTValue(string recordType, string field, string fieldValue)
         {
             string updateMessage = $"<root>" +
-                $"<{field}>{fieldValue}</{field}" +
+                $"<{field}>{fieldValue}</{field}>" +
                 $"</root>";
 
-            string result = POSTRecord(updateMessage, recordType, Id);
+            string result = POSTRecord(updateMessage, recordType);
+            return result;
+        }
+        /// <summary>
+        /// constructs full updateMessage to post new list of field values to salesforce's REST API.
+        /// </summary>
+        /// <param name="Id">Id field of object to patch</param>
+        /// <param name="recordType">Object type to patch</param>
+        /// <param name="field">field name to patch new value to</param>
+        /// <param name="fieldValue">field value to patch to given field</param>
+        /// <exception cref="Exception">throws exeption when field and fieldValue lists are not of equal size
+        /// <returns>returns response message from the REST API</returns>
+        public string POSTValues(string recordType, List<string> field, List<string> fieldValue)
+        {
+            if (field.Count == fieldValue.Count)
+            {
+                string updateMessage = "<root>";
+                for (int i = 0; i < fieldValue.Count; i++)
+                {
+                    updateMessage += $"<{field}>{fieldValue}</{field}>";
+                }
+                updateMessage += "</root>";
+
+                string result = POSTRecord(updateMessage, recordType);
+                return result;
+            }
+            else
+            {
+                throw new Exception("ERROR: field and field value lists must be of equal size");
+            }
+        }
+        public string createTask(string createdBy, string description, string taskSubject)
+        {
+            //                $"<CreatedById>{createdBy}</CreatedById>" +
+            DateTime activityDate = DateTime.Now;
+            activityDate.AddDays(7);
+            string activityDueDate = activityDate.ToString("yyyy-MM-dd");
+            string parameters = $"<root>" +
+                $"<ActivityDate>{activityDueDate}1</ActivityDate>" +
+                $"<OwnerId>{createdBy}</OwnerId>" +
+                $"<Priority>Normal</Priority>" +
+                $"<RecordTypeId>0121U0000017BR0QAM</RecordTypeId>" +
+                $"<Service_Topics__c>Admin - Paperwork/Other</Service_Topics__c>" +
+                $"<Description>{description}</Description>" +
+                $"<Status>Not Started</Status>" +
+                $"<Subject>{taskSubject}</Subject>" +
+                $"<TaskSubtype>Task</TaskSubtype>" +
+                $"<Type>Task</Type>" +
+                $"</root>";
+            string result = POSTRecord(parameters, "Task");
             return result;
         }
         #endregion
