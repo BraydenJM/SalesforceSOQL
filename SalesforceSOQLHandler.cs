@@ -254,8 +254,17 @@ namespace SalesforceSOQL
                 result.Add(row);
                 foreach (var item in temp["records"]) //returned JSON always stores values nested inside of records
                 {
-                    row.Add(item[col].ToString());
+                    try
+                    {
+                        row.Add(item[col].ToString());
+                    }
+                    catch
+                    {
+                        row.Add(""); //add blank value in place of nulls
+                    }
+                    
                 }
+
             }
             return result;
         }
