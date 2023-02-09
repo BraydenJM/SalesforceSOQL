@@ -255,12 +255,10 @@ namespace SalesforceSOQL
             {
                 return result;
             }
-            
-
-
         }
         /// <summary>
         /// sends SOQL request to the salesforce database using the URL and enpoint values provided by the object parameters.
+        /// Method only sends the raw string in a HTTP message to server and returns the result. No other logic is used.
         /// </summary>
         /// <param name="queryMessage">query message to send in http request</param>
         /// <returns>Returns the server response as a JObject. JObject is parsed from the response sent by the server</returns>
