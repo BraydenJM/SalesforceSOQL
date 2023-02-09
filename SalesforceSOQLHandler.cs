@@ -131,6 +131,40 @@ namespace SalesforceSOQL
             getAuthToken();
         }
         /// <summary>
+        /// Constructor for the SOQLQuery class
+        /// </summary>
+        /// <param name="azVault">Azure secret key vault containing parameters</param>
+        /// <param name="loginEndpoint">login end point, ex: "https://login.salesforce.com/services/oauth2/token"</param>
+        /// <param name="apiEndpoint">api endpoint, ex: "/services/data/vXX.X/"</param>
+        /// <param name="serviceUrl">service URL ex: "https://sample.my.salesforce.com/"</param>
+        /// <param name="username">salesforce login username</param>
+        /// <param name="password">salesforce login user password, must also contain password token</param>
+        /// <param name="token">secret token used for logging into API services. Typically sent once in the users email</param>
+        /// <param name="consumerKey">salesforce API consumer key</param>
+        /// <param name="consumerSecret">API secret</param>
+        public SalesforceSOQLHandler(SecretClient azVault, string loginEndpoint, string apiEndpoint, string serviceUrl,
+                                    string username, string password, string token, string consumerKey, string consumerSecret)
+        {
+            KeyVaultSecret sec = azVault.GetSecret(loginEndpoint);
+            this.loginEndpoint = sec.Value;
+            sec = azVault.GetSecret(apiEndpoint);
+            this.apiEndpoint = sec.Value;
+            sec = azVault.GetSecret(serviceUrl);
+            this.serviceUrl = sec.Value;
+            sec = azVault.GetSecret(username);
+            this.username = sec.Value;
+            sec = azVault.GetSecret(password);
+            this.password = sec.Value;
+            sec = azVault.GetSecret(token);
+            this.token = sec.Value;
+            sec = azVault.GetSecret(consumerKey);
+            this.consumerKey = sec.Value;
+            sec = azVault.GetSecret(consumerSecret);
+            this.consumerSecret = sec.Value;
+            this.client = new HttpClient();
+            getAuthToken();
+        }
+        /// <summary>
         /// Automatically called when the class is created. Method gets the authToken for the session and sets it as the
         /// authToken value.
         /// </summary>
@@ -148,7 +182,8 @@ namespace SalesforceSOQL
                                 {"username", this.username},
                                 {"password", this.password + this.token}
                                 });
-
+            Console.WriteLine($"Attempting connection to endpoint: {this.loginEndpoint}\n" +
+                $"Sending connection request as: {this.username}");
             HttpResponseMessage message = client.PostAsync(loginEndpoint, content).Result;
             string response = message.Content.ReadAsStringAsync().Result;
             JObject obj = JObject.Parse(response);
@@ -159,11 +194,14 @@ namespace SalesforceSOQL
                 Console.WriteLine($"Auth Token recieved from HTTP request.\n" +
                     $" Sent request as: {this.username}\n" +
                     $"API Id: {this.consumerKey}\n" +
-                    $"Server Response: {message.StatusCode.ToString()}");
+                    $"Server status code: {message.StatusCode.ToString()}");
             }
             else
             {
-                throw new Exception("HttpResponseMessage returned NULL for access_token parameter");
+                throw new Exception("HttpResponseMessage returned NULL for access_token parameter.\n" +
+                    $"Server status code: {message.StatusCode.ToString()}\n" +
+                    $"Request headers sent: {message.Headers}\n" +
+                    $"Server response: {message.ReasonPhrase}");
             }
         }
         #endregion
@@ -400,25 +438,63 @@ namespace SalesforceSOQL
                 throw new Exception("ERROR: field and field value lists must be of equal size");
             }
         }
-        public string createTask(string createdBy, string description, string taskSubject)
+        /// <summary>
+        /// Creates a new record of the given record type with field values provided in the 2d list. Each value under the header value will
+        /// create a new Salesforce object the given string value. 
+        /// </summary>
+        /// <param name="recordType">Name of the object to create.</param>
+        /// <param name="values">2n list with field names and values to use to create each new object</param>
+        /// <returns>returns HTTP response message from the generated SOQL query</returns>
+        public string POST2DListValues(string recordType, List<List<string>> values)
         {
-            //                $"<CreatedById>{createdBy}</CreatedById>" +
-            DateTime activityDate = DateTime.Now;
-            activityDate.AddDays(7);
-            string activityDueDate = activityDate.ToString("yyyy-MM-dd");
-            string parameters = $"<root>" +
-                $"<ActivityDate>{activityDueDate}1</ActivityDate>" +
-                $"<OwnerId>{createdBy}</OwnerId>" +
-                $"<Priority>Normal</Priority>" +
-                $"<RecordTypeId>0121U0000017BR0QAM</RecordTypeId>" +
-                $"<Service_Topics__c>Admin - Paperwork/Other</Service_Topics__c>" +
-                $"<Description>{description}</Description>" +
-                $"<Status>Not Started</Status>" +
-                $"<Subject>{taskSubject}</Subject>" +
-                $"<TaskSubtype>Task</TaskSubtype>" +
-                $"<Type>Task</Type>" +
-                $"</root>";
-            string result = POSTRecord(parameters, "Task");
+            string result = "";
+            //recieved list uses first row as header values
+            if (values[0].Count > values.Count)
+            {
+                for(int i = 0; i <values.Count; i++)
+                {
+                    string parameters = "<root>";
+                    for(int k = 1; k < values[i].Count; k++)
+                    {
+                        parameters += $"<{values[i][0]}><{values[i][k]}></{values[i][0]}>";
+                    }
+                    parameters += "</root>";
+                    result += "\n" + POSTRecord(parameters, recordType);
+                }
+            }
+            //recived list uses first col as header values
+            else
+            {
+                for(int i = 0; i < values[0].Count; i++)
+                {
+                    string parameters = "<root>";
+                    for(int k = 1; k < values.Count; i++)
+                    {
+                        parameters += $"<{values[0][i]}><{values[k][i]}></{values[0][i]}>";
+                    }
+                    parameters += "</root>";
+                    result += "\n" + POSTRecord(parameters, recordType);
+                }
+            }
+            return result;
+        }
+        /// <summary>
+        /// Generates a POST query from a keyvalue pair. Method uses the key to create the objects field name (Use the fields API name in Salesforce)
+        /// and the value to insert the fields value. The record type corrisponds with the SObject name as shown in the URL. For example; a Task object
+        /// would be displayed as *yourOrgName*.lightnng.force.com/r/Task when viewing the task object.
+        /// </summary>
+        /// <param name="objectParameters">Keys are used for object field API names, Values insert the given value into the field</param>
+        /// <param name="recordType">Name of the object to create.</param>
+        /// <returns>returns HTTP response message from the generated SOQL query</returns>
+        public string createObject(List<KeyValuePair<string, string>> objectParameters, string recordType)
+        {
+            string parameters = "<root>";
+            foreach(KeyValuePair<string, string> parameter in objectParameters)
+            {
+                parameters += $"<{parameter.Key}>{parameter.Value}</{parameter.Key}>";
+            }
+            parameters += "</root>";
+            string result = POSTRecord(parameters, recordType);
             return result;
         }
         #endregion
