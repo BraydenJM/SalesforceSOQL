@@ -378,7 +378,7 @@ namespace SalesforceSOQL
         /// <param name="createMessage">message to append to http request header</param>
         /// <param name="recordType">record type to post</param>
         /// <returns>retursn response message from REST API</returns>
-        private string POSTRecord(string createMessage, string recordType)
+        public string POSTRecord(string createMessage, string recordType)
         {
             HttpContent contentCreate = new StringContent(createMessage, Encoding.UTF8, "application/xml");
             string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}";
