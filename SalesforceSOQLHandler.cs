@@ -276,7 +276,7 @@ namespace SalesforceSOQL
         /// </summary>
         /// <param name="queryMessage">SOQL HTTP response message to parse list from</param>
         /// <returns>two dimensional string list</returns>
-        public List<List<String>> getStringListFromQuery(String queryMessage)
+        public List<List<string>> getStringListFromQuery(string queryMessage)
         {
             JObject temp = queryRecordJObject(queryMessage);//sends SOQL query to salesforce server
 
@@ -313,7 +313,7 @@ namespace SalesforceSOQL
         /// <param name="recordType">object type to patch to</param>
         /// <param name="recordId">record to patch values to</param>
         /// <returns>returns response message from the REST API</returns>
-        private string PATCHRecord(string updateMessage, string recordType, string recordId)
+        public string PATCHRecord(string updateMessage, string recordType, string recordId)
         {
             HttpContent contentUpdate = new StringContent(updateMessage, Encoding.UTF8, "application/xml");
             string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}/{recordId}?_HttpMethod=PATCH";
@@ -358,7 +358,10 @@ namespace SalesforceSOQL
                 string updateMessage = "<root>";
                 for(int i = 0; i < fieldValue.Count; i++)
                 {
-                    updateMessage += $"<{field}>{fieldValue}</{field}>";
+                    if (fieldValue[i] != null)
+                    {
+                        updateMessage += $"<{field[i]}>{fieldValue[i]}</{field[i]}>";
+                    }
                 }
                 updateMessage += "</root>";
 
@@ -504,9 +507,15 @@ namespace SalesforceSOQL
         /// <returns>HTTP response message as a string</returns>
         private string HTTPResponseToString(HttpResponseMessage response)
         {
-            JObject temp = JObject.Parse(response.Content.ReadAsStringAsync().Result);
-            String result = temp.ToString();
-            return result;
+            if (response.IsSuccessStatusCode == true)
+            {
+                JObject temp = JObject.Parse(response.Content.ReadAsStringAsync().Result);
+                return temp.ToString();
+            }
+            else
+            {
+                return response.StatusCode.ToString();
+            }
         }
         /// <summary>
         /// Returns a string list containing the field value selectors used in the SOQL query.
