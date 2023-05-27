@@ -3,6 +3,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using Newtonsoft.Json.Linq;
 using Azure.Security.KeyVault.Secrets;
+using Microsoft.Extensions.Azure;
+using Azure.Core;
+using System.Security.AccessControl;
 
 namespace SalesforceSOQL
 {
@@ -365,8 +368,7 @@ namespace SalesforceSOQL
                 }
                 updateMessage += "</root>";
 
-                string result = PATCHRecord(updateMessage, recordType, Id);
-                return result;
+                return PATCHRecord(updateMessage, recordType, Id);
             }
             else
             {
@@ -498,6 +500,8 @@ namespace SalesforceSOQL
             string result = POSTRecord(parameters, recordType);
             return result;
         }
+        #endregion
+        #region DELETE methods
         #endregion
         #region helper methods
         /// <summary>
