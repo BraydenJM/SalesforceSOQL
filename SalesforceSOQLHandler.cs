@@ -6,6 +6,10 @@ using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Azure;
 using Azure.Core;
 using System.Security.AccessControl;
+using System.Net.Http.Json;
+using Newtonsoft.Json;
+using System;
+using System.Security.Cryptography;
 
 namespace SalesforceSOQL
 {
@@ -329,6 +333,74 @@ namespace SalesforceSOQL
             return response.Content.ReadAsStringAsync().Result;
         }
         /// <summary>
+        /// Posts new values to specified record using salesforce REST API. full update message is constructed from public methods
+        /// </summary>
+        /// <param name="jsonData">Object with parmeters to create in salesforce. Must be deserializable by newtsonsoft JSOn</param>
+        /// <param name="recordType">record type to post</param>
+        /// <returns>return response message from REST API</returns>
+        public Object PATCHRecordJSon(Object jsonData, string recordType, string recordId)
+        {
+
+            var contentType = new MediaTypeWithQualityHeaderValue("application/json");
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}/{recordId}?_HttpMethod=PATCH";
+            string JSON = JsonConvert.SerializeObject(jsonData);
+            HttpContent contentCreate = new StringContent(JSON, Encoding.UTF8, "application/json");
+            HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Patch, uri);
+            requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
+            requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            requestCreate.Content = contentCreate;
+
+            HttpResponseMessage response = client.Send(requestCreate);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                return (Object)JsonConvert.DeserializeObject<Object>(response.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                throw new Exception(response.StatusCode.ToString());
+            }
+        }
+        /// <summary>
+        /// Posts new values to specified record using salesforce REST API. full update message is constructed from public methods
+        /// </summary>
+        /// <param name="jsonData">Dictionary with parameter key value pair</param>
+        /// <param name="recordType">record type to post</param>
+        /// <returns>return response message from REST API</returns>
+        public string PATCHRecordJSon(Dictionary<string, string> jsonData, string recordType, string recordId)
+        {
+
+            var contentType = new MediaTypeWithQualityHeaderValue("application/json");
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}/{recordId}?_HttpMethod=PATCH";
+            string JSON = JsonConvert.SerializeObject(jsonData);
+            HttpContent contentCreate = new StringContent(JSON, Encoding.UTF8, "application/json");
+            HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Patch, uri);
+            requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
+            requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            requestCreate.Content = contentCreate;
+
+            HttpResponseMessage response = client.Send(requestCreate);
+            return response.StatusCode.ToString();
+        }
+        /// <summary>
+        /// Posts new values to specified record using salesforce REST API. full update message is constructed from public methods
+        /// </summary>
+        /// <param name="jsonData">Formatted JSON string with fields and values</param>
+        /// <param name="recordType">record type to post</param>
+        /// <returns>return response message from REST API</returns>
+        public string PATCHRecordJSon(string jsonData, string recordType, string recordId)
+        {
+            var contentType = new MediaTypeWithQualityHeaderValue("application/json");
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}/{recordId}?_HttpMethod=PATCH";
+            HttpContent contentCreate = new StringContent(jsonData, Encoding.UTF8, "application/json");
+            HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Patch, uri);
+            requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
+            requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            requestCreate.Content = contentCreate;
+
+            HttpResponseMessage response = client.Send(requestCreate);
+            return response.StatusCode.ToString();
+        }
+        /// <summary>
         /// constructs full updateMessage to patch new field value to salesforce's REST API.
         /// </summary>
         /// <param name="Id">Id field of object to patch</param>
@@ -375,6 +447,58 @@ namespace SalesforceSOQL
                 throw new Exception("ERROR: field and field value lists must be of equal size");
             }
         }
+        /// <summary>
+        /// constructs full updateMessage to patch new list of field values to salesforce's REST API.
+        /// </summary>
+        /// <param name="Id">Id field of object to patch</param>
+        /// <param name="recordType">Object type to patch</param>
+        /// <param name="field">field name to patch new value to</param>
+        /// <param name="fieldValue">field value to patch to given field</param>
+        /// <exception cref="Exception">throws exeption when field and fieldValue lists are not of equal size
+        /// <returns>returns response message from the REST API</returns>
+        public string PATCHValuesJson(string recordType, string Id, List<string> field, List<string> fieldValue)
+        {
+            Dictionary<string, string> recordValues = new Dictionary<string, string>();
+            for (int i = 0; i < field.Count; i++)
+            {
+                recordValues.Add(field[i], fieldValue[i]);
+            }
+            return PATCHRecordJSon(recordValues, recordType, Id);
+        }
+        /// <summary>
+        /// constructs full updateMessage to patch new list of field values to salesforce's REST API.
+        /// </summary>
+        /// <param name="Id">Id field of object to patch</param>
+        /// <param name="recordType">Object type to patch</param>
+        /// <param name="field">field name to patch new value to</param>
+        /// <param name="fieldValue">field value to patch to given field</param>
+        /// <exception cref="Exception">throws exeption when field and fieldValue lists are not of equal size
+        /// <returns>returns response message from the REST API</returns>
+        public string PATCHValuesJson(string recordType, string Id, List<List<string>> values)
+        {
+            if(values.Count > 1)
+            {
+                if (values[0].Count != values[1].Count)
+                {
+                    return "Invalid 2D list passed to method. All columns must be of equal length";
+                }
+            }
+            List<string> fields = new List<string>();
+            for(int i = 0; i < values.Count; i++)
+            {
+                fields.Add(values[i][0]);
+            }
+            for(int i = 1; i < values[0].Count; i++)
+            {
+                Dictionary<string, string> fieldValues = new Dictionary<string, string>();
+                for(int k = 0; k < fields.Count; k++)
+                {
+                    fieldValues.Add(fields[k], values[k][i]);
+                }
+                PATCHRecordJSon(fieldValues, recordType, Id);
+            }
+            return "Operation complete. Still haven't added a proper response handling method";
+        }
         #endregion
         #region POST methods
         /// <summary>
@@ -382,7 +506,7 @@ namespace SalesforceSOQL
         /// </summary>
         /// <param name="createMessage">message to append to http request header</param>
         /// <param name="recordType">record type to post</param>
-        /// <returns>retursn response message from REST API</returns>
+        /// <returns>return response message from REST API</returns>
         public string POSTRecord(string createMessage, string recordType)
         {
             HttpContent contentCreate = new StringContent(createMessage, Encoding.UTF8, "application/xml");
@@ -395,6 +519,59 @@ namespace SalesforceSOQL
             HttpResponseMessage response = client.SendAsync(requestCreate).Result;
             return response.Content.ReadAsStringAsync().Result;
 
+        }
+        /// <summary>
+        /// Posts new values to specified record using salesforce REST API. full update message is constructed from public methods
+        /// </summary>
+        /// <param name="jsonData">Object with parmeter to create in salesforce</param>
+        /// <param name="recordType">record type to post</param>
+        /// <returns>return response message from REST API</returns>
+        public Object POSTRecordJSon(Object jsonData, string recordType)
+        {
+            var contentType = new MediaTypeWithQualityHeaderValue("application/json");
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}";
+            string JSON = JsonConvert.SerializeObject(jsonData);
+            HttpContent contentCreate = new StringContent(JSON, Encoding.UTF8, "application/json");
+            HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Post, uri);
+            requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
+            requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            requestCreate.Content = contentCreate;
+
+            HttpResponseMessage response = client.Send(requestCreate);
+            if(response.StatusCode == HttpStatusCode.OK)
+            {
+                return (Object)JsonConvert.DeserializeObject<Object>(response.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                throw new Exception(response.StatusCode.ToString());
+            }
+        }
+        /// <summary>
+        /// Posts new values to specified record using salesforce REST API. full update message is constructed from public methods
+        /// </summary>
+        /// <param name="JsonData">message to append to http request header</param>
+        /// <param name="recordType">record type to post</param>
+        /// <returns>return response message from REST API</returns>
+        public string POSTRecordJSon(string jsonData, string recordType)
+        {
+            var contentType = new MediaTypeWithQualityHeaderValue("application/json");
+            string uri = $"{serviceUrl}{apiEndpoint}sobjects/{recordType}";
+            HttpContent contentCreate = new StringContent(jsonData, Encoding.UTF8, "application/json");
+            HttpRequestMessage requestCreate = new HttpRequestMessage(HttpMethod.Post, uri);
+            requestCreate.Headers.Add("Authorization", "Bearer " + authToken);
+            requestCreate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            requestCreate.Content = contentCreate;
+
+            HttpResponseMessage response = client.Send(requestCreate);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                return response.Content.ReadAsStringAsync().Result;
+            }
+            else
+            {
+                throw new Exception(response.StatusCode.ToString());
+            }
         }
         /// <summary>
         /// constructs full updateMessage to post new field values to salesforce's REST API.
