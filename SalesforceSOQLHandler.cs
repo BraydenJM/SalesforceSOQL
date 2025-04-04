@@ -287,27 +287,39 @@ namespace SalesforceSOQL
         {
             JObject temp = queryRecordJObject(queryMessage);//sends SOQL query to salesforce server
 
-            List<List<String>> result = new List<List<String>>();
-            List<String> cols = getSObjectColumn(queryMessage);//outside list generated based on selected values in query.
-
+            List<string> cols = getSObjectColumn(queryMessage);//outside list generated based on selected values in query.
+            List<List<string>> result = new List<List<string>>();
             foreach (string col in cols)
             {
-                List<String> row = new List<String>(); //generate list to append to each outside list value
-                row.Add(col);
-                result.Add(row);
-                foreach (var item in temp["records"]) //returned JSON always stores values nested inside of records
+                result.Add(new List<string> { col });
+            }
+            if (temp.HasValues == true)
+            {
+                JToken values = temp.SelectToken("records");
+                foreach (JToken token in values.Children())
                 {
-                    try
+                    foreach (List<string> column in result)
                     {
-                        row.Add(item[col].ToString());
-                    }
-                    catch
-                    {
-                        row.Add(""); //add blank value in place of nulls
-                    }
-                    
-                }
+                        JToken childValue = token.SelectToken(column[0]);
+                        if (childValue != null)
+                        {
+                            string value = childValue.Value<string>();
+                            if (value != null && !value.Equals("null", StringComparison.OrdinalIgnoreCase))
+                            {
+                                column.Add(value);
+                            }
+                            else
+                            {
+                                column.Add("");
+                            }
 
+                        }
+                        else
+                        {
+                            column.Add("");
+                        }
+                    }
+                }
             }
             return result;
         }
